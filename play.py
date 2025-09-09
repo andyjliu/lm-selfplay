@@ -1,12 +1,13 @@
 import time
 import json
 import argparse
-
-from players import ClosedSourceChatPlayer
-from games.negotiation import NegotiationGame
-
 import numpy as np
 import os
+
+from players import MatrixChatPlayer
+from games.negotiation import NegotiationGame
+
+from matrix import Cli
 
 def simulate_trials(
     model_id, output_dir, temperature, objective="self", num_runs=1, selfplay=True
@@ -41,6 +42,7 @@ def simulate_trials(
         prompt_path = "prompts/comp_dond.txt"
 
     model_name = model_id
+    metadata = Cli().get_app_metadata(app_name=model_name)
 
     for i in range(0, num_runs):
         # initialize log files for trial i
@@ -80,40 +82,44 @@ def simulate_trials(
         if selfplay:
             print("item counts: ", game.item_counts)
             players = [
-                ClosedSourceChatPlayer(
+                MatrixChatPlayer(
                     game,
                     game.player_values[0],
                     log_filename=p0_filename,
                     temperature=temperature,
                     model=model_name,
                     prompt_path=prompt_path,
+                    metadata=metadata
                 ),
-                ClosedSourceChatPlayer(
+                MatrixChatPlayer(
                     game,
                     game.player_values[1],
                     log_filename=p1_filename,
                     temperature=temperature,
                     model=model_name,
                     prompt_path=prompt_path,
+                    metadata=metadata
                 ),
             ]
         else:
             players = [
-                ClosedSourceChatPlayer(
+                MatrixChatPlayer(
                     game,
                     game.player_values[1],
                     log_filename=p1_filename,
                     selfplay=True,
                     model=model_name,
                     prompt_path=prompt_path,
+                    metadata=metadata
                 ),
-                ClosedSourceChatPlayer(
+                MatrixChatPlayer(
                     game,
                     game.player_values[1],
                     log_filename=p1_filename,
                     selfplay=True,
                     model="gpt-3.5-turbo",
                     prompt_path=prompt_path,
+                    metadata=metadata
                 ),
             ]
 

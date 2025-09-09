@@ -58,3 +58,4 @@ web_interface/backend/mturk/.env
 game_logs/
 
 **/.DS_Store
+data/

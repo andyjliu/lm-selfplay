@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import os
 import re
+from matrix import Cli
+from matrix.client import query_llm
 
 class HumanPlayer():
 
@@ -182,38 +184,29 @@ class LLMPlayer():
             )
         return is_valid, error_msg
 
-
-class ClosedSourceChatPlayer(LLMPlayer):
+class MatrixChatPlayer(LLMPlayer):
     def __init__(
-        self,
-        game,
-        vals,
-        log_filename,
-        temperature=1,
-        selfplay=True,
-        model="gpt-3.5-turbo-0125",
-        prompt_path="prompts/dond.txt",
+        self, game, vals, log_filename, temperature=1, selfplay=True, prompt_path="prompts/dond.txt",
+             model='gpt-4o', metadata = None
     ):
         super().__init__(game, vals, log_filename, temperature, selfplay, prompt_path)
         self.model = model
+        if metadata is None:
+            self.metadata = Cli().get_app_metadata(app_name=self.model)
+        else:
+            self.metadata = metadata
 
     def generate_response(self):
-        load_dotenv()
-        client = OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            organization=os.getenv("OPENAI_ORG_ID"),
-        )
-
-        # generate output using API
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=self.messages_json,
-            temperature=self.temperature,
+        response = query_llm.batch_requests(
+            url=self.metadata['endpoints']['head'],
+            model=self.metadata['model_name'],
+            app_name=self.metadata['name'],
+            requests=[{'messages': self.messages_json}],
             max_tokens=200,
-        )
-
-        full_output = response.choices[0].message.content.strip()
-
+            temperature=self.temperature
+        )[0]['response']
+        full_output = response['text'][0].strip()
+        
         # append full output to the log
         f = open(self.player_log_filename, "a")
         f.write(full_output + "\n")

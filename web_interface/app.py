@@ -11,7 +11,7 @@ import random
 import json
 import string
 from games.web_negotiation import WebNegotiationGame
-from players import ClosedSourceChatPlayer
+from players import MatrixChatPlayer
 import openai
 import numpy as np
 import boto3
@@ -129,7 +129,7 @@ def new_game(user_id, mturk_info):
         objective=objective
     )
 
-    assistant = ClosedSourceChatPlayer(
+    assistant = MatrixChatPlayer(
         game=game,
         vals=game.assistant_values,
         model=current_model[2],
