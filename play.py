@@ -3,6 +3,7 @@ import json
 import argparse
 import numpy as np
 import os
+from tqdm import tqdm
 
 from players import MatrixChatPlayer
 from games.negotiation import NegotiationGame
@@ -19,6 +20,7 @@ def simulate_trials(
         # read lines into a list, stripping the newline character from each line
         lines = [line.strip() for line in file]
 
+    np.random.seed(42)
     random_indices = np.random.randint(0, 4085, size=num_runs)
 
     p0_outcomes = []
@@ -44,12 +46,14 @@ def simulate_trials(
     model_name = model_id
     metadata = Cli().get_app_metadata(app_name=model_name)
 
-    for i in range(0, num_runs):
+    for i in tqdm(range(0, num_runs)):
         # initialize log files for trial i
         index = ("000" + str(i))[-3:]
 
         # full log
         game_filename = f"{output_dir}/text_logs/" + index + "_full.txt"
+        if os.path.exists(game_filename):
+            continue
         open(game_filename, "x")
 
         # # initialize a log file for each player
@@ -76,11 +80,11 @@ def simulate_trials(
             game_log_filename=game_filename,
             objective=objective,
         )
-        print(game_filename)
+        # print(game_filename)
 
         # initialize the players, depending on whether we are doing selfplay or have a human in the loop
         if selfplay:
-            print("item counts: ", game.item_counts)
+            # print("item counts: ", game.item_counts)
             players = [
                 MatrixChatPlayer(
                     game,

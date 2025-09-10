@@ -205,8 +205,20 @@ class MatrixChatPlayer(LLMPlayer):
             max_tokens=200,
             temperature=self.temperature
         )[0]['response']
-        full_output = response['text'][0].strip()
-        
+        try:
+            full_output = response['text'][0].strip()
+        except KeyError:
+            print(f'KeyError with prompt {self.messages_json} and response: {response}')
+            response = query_llm.batch_requests(
+                url=self.metadata['endpoints']['head'],
+                model=self.metadata['model_name'],
+                app_name=self.metadata['name'],
+                requests=[{'messages': self.messages_json}],
+                max_tokens=200,
+                temperature=self.temperature
+            )[0]['response']
+            full_output = response['text'][0].strip()
+
         # append full output to the log
         f = open(self.player_log_filename, "a")
         f.write(full_output + "\n")
