@@ -7,11 +7,15 @@ from tqdm import tqdm
 
 from players import MatrixChatPlayer
 from games.negotiation import NegotiationGame
+from analysis import analyze
+import wandb
+import random
 
 from matrix import Cli
 
 def simulate_trials(
-    model_id, output_dir, temperature, objective="self", num_runs=1, selfplay=True
+    model_id_1, model_id_2, output_dir, temperature, objective="self", num_runs=1, selfplay=True, 
+    use_wandb=False, wandb_project=None
 ):
     # this function simulates num_runs trials of the game
 
@@ -43,8 +47,10 @@ def simulate_trials(
     else:
         prompt_path = "prompts/comp_dond.txt"
 
-    model_name = model_id
-    metadata = Cli().get_app_metadata(app_name=model_name)
+    model_name_1 = model_id_1
+    model_name_2 = model_id_2
+    metadata_1 = Cli().get_app_metadata(app_name=model_name_1)
+    metadata_2 = Cli().get_app_metadata(app_name=model_name_2)
 
     for i in tqdm(range(0, num_runs)):
         # initialize log files for trial i
@@ -83,54 +89,35 @@ def simulate_trials(
         # print(game_filename)
 
         # initialize the players, depending on whether we are doing selfplay or have a human in the loop
-        if selfplay:
-            # print("item counts: ", game.item_counts)
-            players = [
-                MatrixChatPlayer(
-                    game,
-                    game.player_values[0],
-                    log_filename=p0_filename,
-                    temperature=temperature,
-                    model=model_name,
-                    prompt_path=prompt_path,
-                    metadata=metadata
-                ),
-                MatrixChatPlayer(
-                    game,
-                    game.player_values[1],
-                    log_filename=p1_filename,
-                    temperature=temperature,
-                    model=model_name,
-                    prompt_path=prompt_path,
-                    metadata=metadata
-                ),
-            ]
+        if random.random() < 0.5:
+            # swap models half the time to ensure fairness
+            m1, m2 = model_name_1, model_name_2
+            meta1, meta2 = metadata_1, metadata_2
         else:
-            players = [
-                MatrixChatPlayer(
-                    game,
-                    game.player_values[1],
-                    log_filename=p1_filename,
-                    selfplay=True,
-                    model=model_name,
-                    prompt_path=prompt_path,
-                    metadata=metadata
-                ),
-                MatrixChatPlayer(
-                    game,
-                    game.player_values[1],
-                    log_filename=p1_filename,
-                    selfplay=True,
-                    model="gpt-3.5-turbo",
-                    prompt_path=prompt_path,
-                    metadata=metadata
-                ),
-            ]
+            m1, m2 = model_name_2, model_name_1
+            meta1, meta2 = metadata_2, metadata_1
 
-            # if human is playing, we need to tell them the item counts and their values for each item
-            print("Your values: ", game.player_values[0])
-            print("Item counts: ", game.item_counts)
-
+        players = [
+            MatrixChatPlayer(
+                game,
+                game.player_values[0],
+                log_filename=p0_filename,
+                temperature=temperature,
+                model=m1,
+                prompt_path=prompt_path,
+                metadata=meta1
+            ),
+            MatrixChatPlayer(
+                game,
+                game.player_values[1],
+                log_filename=p1_filename,
+                temperature=temperature,
+                model=m2,
+                prompt_path=prompt_path,
+                metadata=meta2
+            ),
+        ]
+        
         # play the game
         game_outcome = game.play_game(players)
 
@@ -171,6 +158,36 @@ def simulate_trials(
     # evaluate player outcomes
     print("p0 mean:", np.mean(p0_outcomes))
     print("p1 mean:", np.mean(p1_outcomes))
+    
+    # Log metrics to wandb if enabled
+    if use_wandb:
+        # Get detailed analysis metrics
+        analysis_results = analyze(output_dir, verbose=False, objective=objective)
+        
+        # Create metrics dictionary similar to create_csv format
+        metrics = {
+            "metrics/p0_mean": np.mean(p0_outcomes),
+            "metrics/p1_mean": np.mean(p1_outcomes),
+            "metrics/total_mean": analysis_results["total"]["mean"],
+            "metrics/total_median": analysis_results["total"]["median"],
+            "metrics/total_avg_length_in_tokens": analysis_results["total"]["length_in_tkns"],
+            "metrics/total_avg_length_in_msgs": analysis_results["total"]["length_in_msgs"],
+            "metrics/abort_rate": analysis_results["total"]["abort_rate"],
+            "metrics/agreement_proportion": analysis_results["agreement"]["proportion_agreement"],
+            "metrics/pareto_optimal_proportion": analysis_results["agreement"]["proportion_pareto_opt"],
+            "metrics/agreement_mean": analysis_results["agreement"]["mean"],
+            "metrics/agreement_median": analysis_results["agreement"]["median"],
+            "metrics/agreement_avg_length_in_tokens": analysis_results["agreement"]["length_in_tkns"],
+            "metrics/agreement_avg_length_in_msgs": analysis_results["agreement"]["length_in_msgs"],
+            "metrics/above_avg_mean": analysis_results["above_avg"]["mean"],
+            "metrics/above_avg_median": analysis_results["above_avg"]["median"],
+            "metrics/above_avg_avg_length_in_tokens": analysis_results["above_avg"]["length_in_tkns"],
+            "metrics/above_avg_avg_length_in_msgs": analysis_results["above_avg"]["length_in_msgs"],
+            "metrics/proportion_above_avg": analysis_results["above_avg"]["proportion_above_avg"],
+        }
+        
+        # Log all metrics to wandb
+        wandb.log(metrics)
 
 
 def parse_context(ctx):
@@ -190,27 +207,63 @@ def main():
     parser.add_argument(
         "-o", "--objective", type=str, default="self", help="Game objective"
     )
-    parser.add_argument("-m", "--model", type=str, help="Model ID")
+    parser.add_argument("-m1", "--model1", type=str, help="Model ID for first player")
+    parser.add_argument("-m2", "--model2", type=str, help="Model ID for second player")
     parser.add_argument("-t", "--temp", type=float, help="Temperature")
     parser.add_argument("-n", "--num_runs", type=int, help="Number of self-play games")
     parser.add_argument("-d", "--output_dir", type=str, help="Output directory")
+    parser.add_argument("--wandb", action="store_true", help="Enable wandb logging")
+    parser.add_argument("--wandb-project", type=str, help="Wandb project name", default='negotiation-eval')
 
     # parse the command-line arguments
     args = parser.parse_args()
 
     objective = args.objective
-    model_id = args.model
+    model_id_1 = args.model1
+    if args.model2 is None:
+        model_id_2 = model_id_1
+    else:
+        model_id_2 = args.model2
+
     output_dir = args.output_dir
     temperature = args.temp
-    num_runs=args.num_runs
+    num_runs = args.num_runs
+    use_wandb = args.wandb
+    wandb_project = args.wandb_project
+
+    # Initialize wandb if enabled
+    if use_wandb:
+        # Create run_name from output_dir, removing "data/" prefix if present
+        run_name = output_dir
+        if run_name.startswith("data/"):
+            run_name = run_name[5:]  # Remove "data/" prefix
+        
+        wandb.init(
+            project=wandb_project or "lm-selfplay",
+            name=run_name,
+            config={
+                "args/model_id_1": model_id_1,
+                "args/model_id_2": model_id_2,
+                "args/temperature": temperature,
+                "args/objective": objective,
+                "args/num_runs": num_runs,
+                "args/output_dir": output_dir,
+                "args/selfplay": True
+            }
+        )
 
     # duration calculation
     start_time = time.time()
-    simulate_trials(model_id, output_dir, temperature, objective, num_runs, selfplay=True)
+    simulate_trials(model_id_1, model_id_2, output_dir, temperature, objective, num_runs, 
+                   selfplay=True, use_wandb=use_wandb, wandb_project=wandb_project)
     end_time = time.time()
 
     duration = end_time - start_time 
     print(f"The function took {duration} seconds to complete.")
+    
+    if use_wandb:
+        wandb.log({"metrics/duration_seconds": duration})
+        wandb.finish()
 
 
 if __name__ == "__main__":

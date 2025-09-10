@@ -59,3 +59,4 @@ game_logs/
 
 **/.DS_Store
 data/
+wandb/

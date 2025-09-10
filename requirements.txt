@@ -6,6 +6,7 @@ gunicorn
 numpy
 openai
 python-dotenv
+wandb
 
 eventlet
 gevent-websocket
